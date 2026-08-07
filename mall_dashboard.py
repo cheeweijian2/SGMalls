@@ -157,14 +157,14 @@ score_chart = (
     .encode(
         x=alt.X("mall_name:N", sort=top_scored["mall_name"].tolist(), title="Mall"),
         y=alt.Y("readiness_score:Q", title="Readiness score"),
-        tooltip=["mall_name", "readiness_score", "clinic_count", "gym_count", "hdp_count", "has_bike_rack"],
+        tooltip=["mall_name", "readiness_score", "clinic_count", "gym_count", "hdp_count", "bike_rack"],
     )
 )
 st.altair_chart(score_chart, width="stretch")
 
 st.dataframe(
     top_scored[
-        ["mall_name", "readiness_score", "clinic_count", "gym_count", "hdp_count", "has_bike_rack"]
+        ["mall_name", "readiness_score", "clinic_count", "gym_count", "hdp_count", "bike_rack"]
     ],
     width="stretch",
 )
