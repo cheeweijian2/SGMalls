@@ -112,7 +112,7 @@ st.divider()
 st.subheader("Mall readiness score")
 st.caption("Weight each amenity type to build a composite 0-100 score per mall.")
 
-scored = filtered.copy()
+scored = filtered.copy().rename(columns = {'has_bike_rack': ' bike rack'})
 scored["clinic_count"] = scored["Clinic (CHAS)"] + scored["Clinic (PHPC)"]
 scored["gym_count"] = scored["Gym (GeoJSON)"] + scored["Gym/Sports (CSV)"]
 scored["hdp_count"] = scored["HDP Outlet"]
@@ -139,7 +139,7 @@ else:
 scored["clinic_norm"] = scored["clinic_count"] / max_clinic
 scored["gym_norm"] = scored["gym_count"] / max_gym
 scored["hdp_norm"] = scored["hdp_count"] / max_hdp
-scored["bike_norm"] = scored["has_bike_rack"]  # already 0 or 1
+scored["bike_norm"] = scored["bike_rack"]  # already 0 or 1
 
 scored["readiness_score"] = (
     scored["clinic_norm"] * w_clinic
@@ -165,7 +165,7 @@ st.altair_chart(score_chart, width="stretch")
 st.dataframe(
     top_scored[
         ["mall_name", "readiness_score", "clinic_count", "gym_count", "hdp_count", "has_bike_rack"]
-    ].rename(columns={"has_bike_rack": "bike_rack"}),
+    ],
     width="stretch",
 )
 
@@ -213,7 +213,7 @@ else:
 # Full table + download
 # ---------------------------------------------------------------------------
 st.subheader("Mall details")
-st.dataframe(filtered.sort_values("Total", ascending=False), width="stretch")
+st.dataframe(filtered.sort_values("Total", ascending=False).rename(columns = {'has_bike_rack': 'Bike Rack'}), width="stretch")
 
 st.download_button(
     "Download filtered data as CSV",
