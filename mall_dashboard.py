@@ -22,7 +22,7 @@ st.caption("HDP outlets, gyms, clinics, and bike rack proximity across Singapore
 # Data source — upload the CSV produced by mall_data_pipeline.py
 # ---------------------------------------------------------------------------
 summary_file = st.file_uploader("Upload CSV", type="csv")
-butt = st.checkbox("Use default data")
+butt = st.checkbox("Use sample data")
 if butt:
     summary_file = "mall_locations_summary.csv"
 
