@@ -151,6 +151,7 @@ scored["readiness_score"] = (
 score_top_n = st.slider("Show top N by readiness score", 5, 50, 15, key="score_top_n")
 top_scored = scored.sort_values("readiness_score", ascending=False).head(score_top_n)
 
+st.info("Note: if 'bike_rack' is equal to 1, it indicates the presence of bike racks, if 0, it means there are no bike racks.")
 score_chart = (
     alt.Chart(top_scored)
     .mark_bar()
