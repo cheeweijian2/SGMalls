@@ -6,10 +6,7 @@ import streamlit as st
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-# SUMMARY_CSV = "mall_locations_summary.csv"  # produced by mall_data_pipeline.py
-
 st.set_page_config(page_title="Mall Amenities Dashboard", layout="wide")
-
 
 @st.cache_data
 def load_summary(path):
@@ -17,17 +14,20 @@ def load_summary(path):
     df = df.rename(columns={df.columns[0]: "mall_name"})
     return df
 
-SUMMARY_CSV = st.file_uploader("Upload CSV", type='csv')
-
-
+ 
 st.title("🏬 Mall Amenities Dashboard")
 st.caption("HDP outlets, gyms, clinics, and bike rack proximity across Singapore malls.")
-
-try:
-    summary = load_summary(SUMMARY_CSV)
-except FileNotFoundError:
-    st.error(f"Couldn't find `{SUMMARY_CSV}`. Run mall_data_pipeline.py first to generate it.")
+ 
+# ---------------------------------------------------------------------------
+# Data source — upload the CSV produced by mall_data_pipeline.py
+# ---------------------------------------------------------------------------
+summary_file = st.file_uploader("Upload CSV", type="csv")
+ 
+if summary_file is None:
+    st.info("Upload a CSV to get started.")
     st.stop()
+ 
+summary = load_summary(summary_file)
 
 category_cols = [
     c for c in summary.columns
