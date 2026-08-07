@@ -112,7 +112,7 @@ st.divider()
 st.subheader("Mall readiness score")
 st.caption("Weight each amenity type to build a composite 0-100 score per mall.")
 
-scored = filtered.copy().rename(columns = {'has_bike_rack': ;bike_rack})
+scored = filtered.copy().rename(columns = {'has_bike_rack': 'bike_rack'})
 scored["clinic_count"] = scored["Clinic (CHAS)"] + scored["Clinic (PHPC)"]
 scored["gym_count"] = scored["Gym (GeoJSON)"] + scored["Gym/Sports (CSV)"]
 scored["hdp_count"] = scored["HDP Outlet"]
