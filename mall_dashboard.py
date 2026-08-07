@@ -136,16 +136,16 @@ if w_bike < 0:
 else:
     st.caption(f"Bike rack weight (remainder): **{w_bike}%**")
 
-scored["clinic_norm"] = scored["clinic_count"] / max_clinic
-scored["gym_norm"] = scored["gym_count"] / max_gym
-scored["hdp_norm"] = scored["hdp_count"] / max_hdp
-scored["bike_norm"] = scored["bike_rack"]  # already 0 or 1
+scored["clinic_score"] = scored["clinic_count"] / max_clinic * w_clinic
+scored["gym_score"] = scored["gym_count"] / max_gym * w_gym
+scored["hdp_score"] = scored["hdp_count"] / max_hdp * w_hdp
+scored["bike_score"] = scored["has_bike_rack"]  * w_bike # already 0 or 1
 
 scored["readiness_score"] = (
-    scored["clinic_norm"] * w_clinic
-    + scored["gym_norm"] * w_gym
-    + scored["hdp_norm"] * w_hdp
-    + scored["bike_norm"] * w_bike
+    scored["clinic_score"]
+    + scored["gym_score"]
+    + scored["hdp_score"]
+    + scored["bike_score"]
 )
 
 score_top_n = st.slider("Show top N by readiness score", 5, 50, 15, key="score_top_n")
@@ -165,7 +165,7 @@ st.altair_chart(score_chart, width="stretch")
 
 st.dataframe(
     top_scored[
-        ["mall_name", "readiness_score", "clinic_count", "gym_count", "hdp_count", "bike_rack"]
+        ["mall_name", "readiness_score", "clinic_score", "gym_score", "hdp_score", "bike_score"]
     ],
     width="stretch",
     hide_index = True,
@@ -217,7 +217,7 @@ else:
 # Full table + download
 # ---------------------------------------------------------------------------
 st.subheader("Mall details")
-st.dataframe(filtered.sort_values("Total", ascending=False).rename(columns = {'has_bike_rack': 'Bike Rack'}), width="stretch")
+st.dataframe(filtered.sort_values("Total", ascending=False).rename(columns = {'has_bike_rack': 'Bike Rack'}), width="stretch", hide_index = True)
 
 st.download_button(
     "Download filtered data as CSV",
