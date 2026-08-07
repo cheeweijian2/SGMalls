@@ -168,6 +168,7 @@ st.dataframe(
         ["mall_name", "readiness_score", "clinic_count", "gym_count", "hdp_count", "bike_rack"]
     ],
     width="stretch",
+    hide_index = True,
 )
 
 # ---------------------------------------------------------------------------
