@@ -181,7 +181,7 @@ if map_df.empty:
 else:
     max_total = max(map_df["Total"].max(), 1)
     col1, col2 = st.columns(2)
-    size = col1.slider("Size slider", 0, 1000, 200)
+    size = col1.slider("Size slider", 0, 1000, 200) # (size, x, y, opacity)
     map_df["radius"] = size + (map_df["Total"] / max_total) * 250
     map_df["color"] = map_df["has_bike_rack"].apply(
         lambda has_rack: [0, 128, 255, 160] if has_rack else [220, 60, 60, 160]
