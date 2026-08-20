@@ -42,7 +42,6 @@ category_cols = [
 # ---------------------------------------------------------------------------
 st.sidebar.header("Filters")
 search = st.sidebar.text_input("Search mall name")
-bike_only = st.sidebar.checkbox("Only malls with a bike rack nearby")
 current_hpm_only = st.sidebar.checkbox("Show current HPMs")
 min_total = st.sidebar.slider("Minimum total amenities", 0, int(summary["Total"].max()), 0)
 selected_categories = st.sidebar.multiselect(
@@ -52,8 +51,6 @@ selected_categories = st.sidebar.multiselect(
 filtered = summary.copy()
 if search:
     filtered = filtered[filtered["mall_name"].str.contains(search, case=False, na=False)]
-if bike_only:
-    filtered = filtered[filtered["has_bike_rack"] == 1]
 if current_hpm_only:
     filtered = filtered[filtered["HPM"] == 1]
 filtered = filtered[filtered["Total"] >= min_total]
@@ -65,9 +62,7 @@ if selected_categories:
 # ---------------------------------------------------------------------------
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Malls shown", len(filtered))
-col2.metric("Total amenities", int(filtered["Total"].sum()))
-col3.metric("Malls with bike racks", int(filtered["has_bike_rack"].sum()))
-col4.metric("Avg amenities / mall", round(filtered["Total"].mean(), 1) if len(filtered) else 0)
+col2.metric("Current HPM Malls", len(filtered[filtered['HPM'] == 1])
 
 st.divider()
 
@@ -98,8 +93,8 @@ st.altair_chart(top_chart, width="stretch")
 # ---------------------------------------------------------------------------
 # Category breakdown across all shown malls
 # ---------------------------------------------------------------------------
-st.subheader("Category totals across shown malls")
-st.bar_chart(filtered[category_cols].sum())
+# st.subheader("Category totals across shown malls")
+# st.bar_chart(filtered[category_cols].sum())
 
 # ---------------------------------------------------------------------------
 # Mall readiness score — weighted composite of clinics, gyms, HDP outlets,
