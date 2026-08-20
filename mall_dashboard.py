@@ -62,7 +62,7 @@ if selected_categories:
 # ---------------------------------------------------------------------------
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Malls shown", len(filtered))
-col2.metric("Current HPM Malls", len(filtered[filtered['HPM'] == 1])
+col2.metric("Current HPM Malls", len(filtered[filtered['HPM'] == 1]))
 
 st.divider()
 
