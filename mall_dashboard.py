@@ -179,7 +179,7 @@ else:
     size = col1.slider("Size slider", 0, 1000, 200) # (size, x, y, opacity)
     map_df["radius"] = size + (map_df["Total"] / max_total) * 250
     map_df["color"] = map_df["has_bike_rack"].apply(
-        lambda has_rack: [0, 128, 255, 160] if has_rack else [220, 60, 60, 160]
+        lambda has_rack: [0, 255, 0, 160] if has_rack else [255, 0, 0, 160]
     )
     # HPM malls get a gold ring around the bubble; non-HPM malls get no ring
     map_df["line_color"] = map_df["HPM"].apply(lambda hpm: [255, 215, 0, 255] if hpm == 1 else [0, 0, 0, 0])
