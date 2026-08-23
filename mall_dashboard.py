@@ -204,7 +204,7 @@ else:
     tooltip = {"text": "{mall_name}\nTotal amenities: {Total}\nHPM: {HPM}"}
     st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip=tooltip))
     st.caption(
-        "Bubble size = total amenities. Blue = bike rack within 200m, red = none. "
+        "Bubble size = total amenities. Green = satisfies current HPM criteria, red = does not satisfy current HPM criteria. "
         "Gold ring = current HPM mall."
     )
 
