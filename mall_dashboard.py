@@ -44,10 +44,7 @@ st.sidebar.header("Filters")
 search = st.sidebar.text_input("Search mall name")
 current_hpm_only = st.sidebar.checkbox("Show current HPMs")
 satisfy_current = st.sidebar.checkbox("Show malls that satisfy current HPM criteria")
-min_total = st.sidebar.slider("Minimum total amenities", 0, int(summary["Total"].max()), 0)
-selected_categories = st.sidebar.multiselect(
-    "Must have at least one of these categories", category_cols, default=[]
-)
+st.sidebar.info("To satisfy current HPM criteria, the mall must have at least 1 Fitness facilities, have Bike racks and at least 3 HDP (Healthier Dining Programme) outlets")
 
 filtered = summary.copy()
 if search:
@@ -56,122 +53,151 @@ if current_hpm_only:
     filtered = filtered[filtered["HPM"] == 1]
 if satisfy_current:
     filtered = filtered[filtered["satisfy"] == 1]
-filtered = filtered[filtered["Total"] >= min_total]
-if selected_categories:
-    filtered = filtered[(filtered[selected_categories] > 0).any(axis=1)]
+
 
 # ---------------------------------------------------------------------------
 # KPIs
 # ---------------------------------------------------------------------------
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Malls shown", len(filtered))
-col2.metric("Current HPM Malls", len(filtered[filtered['HPM'] == 1]))
-
-st.divider()
+col2.metric("Current HPM Malls", len(filtered[filtered["HPM"]== 1]))
 
 # ---------------------------------------------------------------------------
-# Top malls chart
-# ---------------------------------------------------------------------------
-st.subheader("Top malls by total amenities")
-top_n = st.slider("Show top N malls", 5, 50, 15)
-top_malls = filtered.sort_values("Total", ascending=False).head(top_n)
-
-# st.bar_chart always sorts its x-axis alphabetically, so we use Altair
-# directly and pass an explicit sort order (mall names ranked by Total).
-mall_order = top_malls["mall_name"].tolist()
-top_malls_long = top_malls.melt(
-    id_vars="mall_name", value_vars=category_cols, var_name="category", value_name="count"
-)
-top_chart = (
-    alt.Chart(top_malls_long)
-    .mark_bar()
-    .encode(
-        x=alt.X("mall_name:N", sort=mall_order, title="Mall"),
-        y=alt.Y("count:Q", title="Amenities"),
-        color=alt.Color("category:N", title="Category"),
-    )
-)
-st.altair_chart(top_chart, width="stretch")
-
-# ---------------------------------------------------------------------------
-# Category breakdown across all shown malls
-# ---------------------------------------------------------------------------
-# st.subheader("Category totals across shown malls")
-# st.bar_chart(filtered[category_cols].sum())
-
-# ---------------------------------------------------------------------------
-# Mall readiness score — weighted composite of clinics, gyms, HDP outlets,
-# and bike rack access. Each component is normalised to 0-1 against the max
-# in the currently filtered view, then combined using the slider weights.
-# Clinics + Gyms + HDP weights are adjustable; bike rack takes the remainder
-# so the four always sum to 100%.
+# Mall readiness score — dynamically interactive sliders (sum to 100%)
 # ---------------------------------------------------------------------------
 st.divider()
 st.subheader("Mall readiness score")
-st.caption("Weight each amenity type to build a composite 0-100 score per mall.")
+st.caption("Adjust any slider; the others automatically adjust to maintain a 100% total.")
 
-scored = filtered.copy().rename(columns = {'has_bike_rack': 'bike_rack'})
-scored["clinic_count"] = scored["Clinic (CHAS)"] + scored["Clinic (PHPC)"]
-scored["gym_count"] = scored["Gym (GeoJSON)"] + scored["Gym/Sports (CSV)"]
-scored["hdp_count"] = scored["HDP Outlet"]
+# Initialize session state for sliders if not already set
+if "w_cat_a" not in st.session_state:
+    st.session_state.w_cat_a = 35
+if "w_cat_b" not in st.session_state:
+    st.session_state.w_cat_b = 35
+if "w_cat_d" not in st.session_state:
+    st.session_state.w_cat_d = 30
 
-max_clinic = max(scored["clinic_count"].max(), 1)
-max_gym = max(scored["gym_count"].max(), 1)
-max_hdp = max(scored["hdp_count"].max(), 1)
+# Callback functions to balance remaining sliders dynamically
+def update_a():
+    rem = 100 - st.session_state.w_cat_a
+    other_sum = st.session_state.w_cat_b + st.session_state.w_cat_d
+    if other_sum > 0:
+        st.session_state.w_cat_b = int(round(rem * (st.session_state.w_cat_b / other_sum)))
+        st.session_state.w_cat_d = rem - st.session_state.w_cat_b
+    else:
+        st.session_state.w_cat_b = rem // 2
+        st.session_state.w_cat_d = rem - st.session_state.w_cat_b
 
+def update_b():
+    rem = 100 - st.session_state.w_cat_b
+    other_sum = st.session_state.w_cat_a + st.session_state.w_cat_d
+    if other_sum > 0:
+        st.session_state.w_cat_a = int(round(rem * (st.session_state.w_cat_a / other_sum)))
+        st.session_state.w_cat_d = rem - st.session_state.w_cat_a
+    else:
+        st.session_state.w_cat_a = rem // 2
+        st.session_state.w_cat_d = rem - st.session_state.w_cat_a
+
+def update_d():
+    rem = 100 - st.session_state.w_cat_d
+    other_sum = st.session_state.w_cat_a + st.session_state.w_cat_b
+    if other_sum > 0:
+        st.session_state.w_cat_a = int(round(rem * (st.session_state.w_cat_a / other_sum)))
+        st.session_state.w_cat_b = rem - st.session_state.w_cat_a
+    else:
+        st.session_state.w_cat_a = rem // 2
+        st.session_state.w_cat_b = rem - st.session_state.w_cat_a
+
+# Sliders bound to session state & callbacks
 w_col1, w_col2, w_col3 = st.columns(3)
-w_clinic = w_col1.slider("Clinics weight (%)", 0, 100, 25)
-w_gym = w_col2.slider("Gyms weight (%)", 0, 100, 25)
-w_hdp = w_col3.slider("HDP outlets weight (%)", 0, 100, 25)
-w_bike = 100 - (w_clinic + w_gym + w_hdp)
-
-if w_bike < 0:
-    st.error(
-        f"Clinics + Gyms + HDP weights add up to {w_clinic + w_gym + w_hdp}%, over 100%. "
-        "Lower one of the sliders — bike rack weight can't go negative."
-    )
-    w_bike = 0
-else:
-    st.caption(f"Bike rack weight (remainder): **{w_bike}%**")
-
-scored["clinic_score"] = scored["clinic_count"] / max_clinic * w_clinic
-scored["gym_score"] = scored["gym_count"] / max_gym * w_gym
-scored["hdp_score"] = scored["hdp_count"] / max_hdp * w_hdp
-scored["bike_score"] = scored["bike_rack"]  * w_bike # already 0 or 1
-
-scored["readiness_score"] = (
-    scored["clinic_score"]
-    + scored["gym_score"]
-    + scored["hdp_score"]
-    + scored["bike_score"]
+w_cat_a = w_col1.slider(
+    "Category A: HDP Outlets (%)", 0, 100, key="w_cat_a", on_change=update_a
+)
+w_cat_b = w_col2.slider(
+    "Category B: Fitness & Bike (%)", 0, 100, key="w_cat_b", on_change=update_b
+)
+w_cat_d = w_col3.slider(
+    "Category D: Clinics (%)", 0, 100, key="w_cat_d", on_change=update_d
 )
 
+# 1. Define combined category metrics
+scored = filtered.copy()
+scored["cat_a_count"] = scored["HDP Outlet"]
+scored["cat_b_count"] = scored["Gym (GeoJSON)"] + scored["has_bike_rack"] + scored["Gym/Sports (CSV)"]
+scored["cat_d_count"] = scored["Clinic (PHPC)"] + scored["Clinic (CHAS)"]
+
+# 2. Maximum bounds for normalization
+max_cat_a = max(scored["cat_a_count"].max(), 1)
+max_cat_b = max(scored["cat_b_count"].max(), 1)
+max_cat_d = max(scored["cat_d_count"].max(), 1)
+
+# 3. Calculate weighted scores using interactive dynamic slider values
+scored["cat_a_score"] = (scored["cat_a_count"] / max_cat_a) * w_cat_a
+scored["cat_b_score"] = (scored["cat_b_count"] / max_cat_b) * w_cat_b
+scored["cat_d_score"] = (scored["cat_d_count"] / max_cat_d) * w_cat_d
+
+scored["readiness_score"] = (
+    scored["cat_a_score"]
+    + scored["cat_b_score"]
+    + scored["cat_d_score"]
+)
+
+# ---------------------------------------------------------------------------
+# Stacked Bar Chart (Readiness Score) — Orange, Green, Blue Theme
+# ---------------------------------------------------------------------------
 score_top_n = st.slider("Show top N by readiness score", 5, 50, 15, key="score_top_n")
 top_scored = scored.sort_values("readiness_score", ascending=False).head(score_top_n)
 
-st.info("Note: if 'bike_rack' is equal to 1, it indicates the presence of bike racks within 200m, if 0, it means there are no bike racks within 200m.")
+# Reshape data into long format for Altair stacked bars
+top_scored_long = top_scored.melt(
+    id_vars=["mall_name", "readiness_score"],
+    value_vars=["cat_a_score", "cat_b_score", "cat_d_score"],
+    var_name="category",
+    value_name="score_contribution"
+)
+
+# Friendly display names for chart legend
+category_labels = {
+    "cat_a_score": "Cat A: HDP Outlets",
+    "cat_b_score": "Cat B: Fitness & Bike",
+    "cat_d_score": "Cat D: Clinics"
+}
+top_scored_long["category"] = top_scored_long["category"].map(category_labels)
+
+# Explicit sort order for malls on the x-axis
+mall_order = top_scored["mall_name"].tolist()
+
+# Altair Stacked Bar Chart with Orange, Green, Blue scheme
 score_chart = (
-    alt.Chart(top_scored)
+    alt.Chart(top_scored_long)
     .mark_bar()
     .encode(
-        x=alt.X("mall_name:N", sort=top_scored["mall_name"].tolist(), title="Mall"),
-        y=alt.Y("readiness_score:Q", title="Readiness score"),
-        tooltip=["mall_name", "readiness_score", "clinic_count", "gym_count", "hdp_count", "bike_rack"],
+        x=alt.X("mall_name:N", sort=mall_order, title="Mall"),
+        y=alt.Y("score_contribution:Q", title="Readiness Score (0-100)"),
+        color=alt.Color(
+            "category:N", 
+            title="Category Component",
+            scale=alt.Scale(
+                domain=["Cat A: HDP Outlets", "Cat B: Fitness & Bike", "Cat D: Clinics"],
+                range=["#fc5151", "#23dc1d", "#3745ff"]  # Orange, Green, Blue
+            )
+        ),
+        tooltip=[
+            alt.Tooltip("mall_name:N", title="Mall"),
+            alt.Tooltip("category:N", title="Category"),
+            alt.Tooltip("score_contribution:Q", title="Category Score", format=".1f"),
+            alt.Tooltip("readiness_score:Q", title="Total Readiness Score", format=".1f")
+        ]
     )
 )
-st.altair_chart(score_chart, width="stretch")
 
-st.dataframe(
-    top_scored[
-        ["mall_name", "readiness_score", "clinic_score", "gym_score", "hdp_score", "bike_score"]
-    ],
-    width="stretch",
-    hide_index = True,
-)
+st.altair_chart(score_chart, use_container_width=True)
+st.dataframe(top_scored, hide_index=True)
 
 # ---------------------------------------------------------------------------
 # Map — every mall in view, sized/coloured by total amenities
 # ---------------------------------------------------------------------------
+st.divider()
 st.subheader("Malls map")
 map_df = filtered.dropna(subset=["latitude", "longitude"]).copy()
 if map_df.empty:
@@ -179,8 +205,8 @@ if map_df.empty:
 else:
     max_total = max(map_df["Total"].max(), 1)
     col1, col2 = st.columns(2)
-    size = col1.slider("Size slider", 0, 1000, 200) # (size, x, y, opacity)
-    map_df["radius"] = size + (map_df["Total"] / max_total) * 250
+    size = col1.slider("Size slider", 0, 1000, 330) # (size, x, y, opacity)
+    map_df["radius"] = size #+ (map_df["Total"] / max_total) * 250
     map_df["color"] = map_df["satisfy"].apply(
         lambda satisfy: [0, 255, 0, 200] if satisfy else [255, 0, 0, 160]
     )
@@ -215,7 +241,7 @@ else:
 # Full table + download
 # ---------------------------------------------------------------------------
 # st.subheader("Mall details")
-# st.dataframe(filtered.sort_values("Total", ascending=False).rename(columns = {'has_bike_rack': 'Bike Rack'}), width="stretch", hide_index = True)
+# st.dataframe(filtered.sort_values("Total", ascending=False), width="stretch", hide_index = True)
 
 # st.download_button(
 #     "Download filtered data as CSV",
