@@ -34,7 +34,7 @@ summary = load_summary(summary_file)
 
 category_cols = [
     c for c in summary.columns
-    if c not in ("mall_name", "Total", "has_bike_rack", "longitude", "latitude", "HPM")
+    if c not in ("mall_name", "Total", "has_bike_rack", "longitude", "latitude", "HPM", "satisfy")
 ]
 
 # ---------------------------------------------------------------------------
@@ -43,6 +43,7 @@ category_cols = [
 st.sidebar.header("Filters")
 search = st.sidebar.text_input("Search mall name")
 current_hpm_only = st.sidebar.checkbox("Show current HPMs")
+satisfy_current = st.sidebar.checkbox("Show malls that satisfy current HPM criteria")
 min_total = st.sidebar.slider("Minimum total amenities", 0, int(summary["Total"].max()), 0)
 selected_categories = st.sidebar.multiselect(
     "Must have at least one of these categories", category_cols, default=[]
@@ -53,6 +54,8 @@ if search:
     filtered = filtered[filtered["mall_name"].str.contains(search, case=False, na=False)]
 if current_hpm_only:
     filtered = filtered[filtered["HPM"] == 1]
+if satisfy_current:
+    filtered = filtered[filtered["satisfy"] == 1]
 filtered = filtered[filtered["Total"] >= min_total]
 if selected_categories:
     filtered = filtered[(filtered[selected_categories] > 0).any(axis=1)]
@@ -204,19 +207,19 @@ else:
     tooltip = {"text": "{mall_name}\nTotal amenities: {Total}\nHPM: {HPM}"}
     st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip=tooltip))
     st.caption(
-        "Bubble size = total amenities. Green = satisfies current HPM criteria, red = does not satisfy current HPM criteria. "
-        "Gold ring = current HPM mall."
+        ":green[Green] = satisfies current HPM criteria, :red[Red] = does not satisfy current HPM criteria. "
+        ":yellow[Gold] ring = current HPM mall."
     )
 
 # ---------------------------------------------------------------------------
 # Full table + download
 # ---------------------------------------------------------------------------
-st.subheader("Mall details")
-st.dataframe(filtered.sort_values("Total", ascending=False).rename(columns = {'has_bike_rack': 'Bike Rack'}), width="stretch", hide_index = True)
+# st.subheader("Mall details")
+# st.dataframe(filtered.sort_values("Total", ascending=False).rename(columns = {'has_bike_rack': 'Bike Rack'}), width="stretch", hide_index = True)
 
-st.download_button(
-    "Download filtered data as CSV",
-    data=filtered.to_csv(index=False).encode("utf-8"),
-    file_name="filtered_mall_summary.csv",
-    mime="text/csv",
-)
+# st.download_button(
+#     "Download filtered data as CSV",
+#     data=filtered.to_csv(index=False).encode("utf-8"),
+#     file_name="filtered_mall_summary.csv",
+#     mime="text/csv",
+# )
