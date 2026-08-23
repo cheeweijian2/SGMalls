@@ -39,7 +39,8 @@ st.sidebar.header("Filters")
 search = st.sidebar.text_input("Search mall name")
 current_hpm_only = st.sidebar.checkbox("Show current HPMs")
 satisfy_current = st.sidebar.checkbox("Show malls that satisfy current HPM criteria")
-st.sidebar.info("To satisfy current HPM criteria, the mall must have at least 1 Fitness facilities, have Bike racks and at least 3 HDP (Healthier Dining Programme) outlets")
+st.sidebar.info("To satisfy current HPM criteria, the mall must have at least 1 Fitness facilities, have Bike racks and at least 3 HDP (Healthier Dining Programme) outlets. \n\n"
+"Note: NOT ALL data are available, so current HPM malls might show up as not satisfying current HPM criteria.")
 
 filtered = summary.copy()
 if search:
