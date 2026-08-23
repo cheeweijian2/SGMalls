@@ -111,9 +111,9 @@ def update_d():
         st.session_state.w_cat_b = rem - st.session_state.w_cat_a
 
 w_col1, w_col2, w_col3 = st.columns(3)
-w_cat_a = w_col1.slider("Category A: HDP Outlets (%)", 0, 100, key="w_cat_a", on_change=update_a)
-w_cat_b = w_col2.slider("Category B: Fitness & Bike (%)", 0, 100, key="w_cat_b", on_change=update_b)
-w_cat_d = w_col3.slider("Category D: Clinics (%)", 0, 100, key="w_cat_d", on_change=update_d)
+w_cat_a = w_col1.slider("Category A: Healthy Dining Ecosystem (%)", 0, 100, key="w_cat_a", on_change=update_a)
+w_cat_b = w_col2.slider("Category B: Active Living Infrastructure (%)", 0, 100, key="w_cat_b", on_change=update_b)
+w_cat_d = w_col3.slider("Category D: Healthcare Ecosystem (%)", 0, 100, key="w_cat_d", on_change=update_d)
 
 scored["cat_a_score"] = (scored["cat_a_count"] / max_cat_a) * w_cat_a
 scored["cat_b_score"] = (scored["cat_b_count"] / max_cat_b) * w_cat_b
