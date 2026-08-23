@@ -131,9 +131,9 @@ top_scored_long = top_scored.melt(
 )
 
 category_labels = {
-    "cat_a_score": "Cat A: HDP Outlets",
-    "cat_b_score": "Cat B: Fitness & Bike",
-    "cat_d_score": "Cat D: Clinics"
+    "cat_a_score": "Cat A: Healthy Dining Ecosystem",
+    "cat_b_score": "Cat B: Active Living Infrastructure",
+    "cat_d_score": "Cat D: Healthcare Ecosystem"
 }
 top_scored_long["category"] = top_scored_long["category"].map(category_labels)
 
@@ -147,7 +147,7 @@ score_chart = (
             "category:N", 
             title="Category Component",
             scale=alt.Scale(
-                domain=["Cat A: HDP Outlets", "Cat B: Fitness & Bike", "Cat D: Clinics"],
+                domain=["Cat A: Healthy Dining Ecosystem", "Cat B: Active Living Infrastructure", "Cat D: Healthcare Ecosystem"],
                 range=["#ff7f00", "#4daf4a", "#377eb8"]  # Orange, Green, Blue
             )
         ),
@@ -167,9 +167,9 @@ st.dataframe(
         ["mall_name", "readiness_score", "cat_a_score", "cat_b_score", "cat_d_score"]
     ].rename(columns={
         "readiness_score": "Total Readiness Score",
-        "cat_a_score": "Cat A Score (HDP)",
-        "cat_b_score": "Cat B Score (Fitness/Bike)",
-        "cat_d_score": "Cat D Score (Clinics)"
+        "cat_a_score": "Cat A Score",
+        "cat_b_score": "Cat B Score",
+        "cat_d_score": "Cat D Score"
     }),
     width="stretch",
     hide_index=True,
