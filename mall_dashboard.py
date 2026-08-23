@@ -181,8 +181,8 @@ else:
     col1, col2 = st.columns(2)
     size = col1.slider("Size slider", 0, 1000, 200) # (size, x, y, opacity)
     map_df["radius"] = size + (map_df["Total"] / max_total) * 250
-    map_df["color"] = map_df["has_bike_rack"].apply(
-        lambda has_rack: [0, 255, 0, 160] if has_rack else [255, 0, 0, 160]
+    map_df["color"] = map_df["satisfy"].apply(
+        lambda satisfy: [0, 255, 0, 200] if satisfy else [255, 0, 0, 160]
     )
     # HPM malls get a gold ring around the bubble; non-HPM malls get no ring
     map_df["line_color"] = map_df["HPM"].apply(lambda hpm: [255, 215, 0, 255] if hpm == 1 else [0, 0, 0, 0])
@@ -208,7 +208,7 @@ else:
     st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip=tooltip))
     st.caption(
         ":green[Green] = satisfies current HPM criteria, :red[Red] = does not satisfy current HPM criteria. "
-        ":yellow[Gold] ring = current HPM mall."
+        ":color[Gold]{foreground='rgb(255, 215, 0)'} ring = current HPM mall."
     )
 
 # ---------------------------------------------------------------------------
