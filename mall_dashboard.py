@@ -173,7 +173,7 @@ st.dataframe(
     top_scored[
         ["mall_name", "readiness_score", "cat_a_score", "cat_b_score", "cat_d_score"]
     ].rename(columns={
-        "readiness_score": "Total Readiness Score",
+        "readiness_score": "HPM Index",
         "cat_a_score": "Cat A Score",
         "cat_b_score": "Cat B Score",
         "cat_d_score": "Cat D Score"
