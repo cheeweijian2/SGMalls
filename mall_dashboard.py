@@ -171,7 +171,7 @@ st.altair_chart(score_chart, width="stretch")
 
 st.dataframe(
     top_scored[
-        ["mall_name", "readiness_score", "cat_a_score", "cat_b_score", "cat_d_score"]
+        ["mall_name", "readiness_score", "cat_a_score", "cat_b_score", "cat_d_score", "HPM"]
     ].rename(columns={
         "readiness_score": "HPM Index",
         "cat_a_score": "Cat A Score",
