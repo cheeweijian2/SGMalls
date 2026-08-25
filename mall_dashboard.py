@@ -64,9 +64,9 @@ st.divider()
 st.subheader("Mall readiness score")
 st.latex(r"""
 \text{Readiness Score} = 
-\left( \frac{\text{Cat A}}{\text{Max A}} \times W_A \right) + 
-\left( \frac{\text{Cat B}}{\text{Max B}} \times W_B \right) + 
-\left( \frac{\text{Cat D}}{\text{Max D}} \times W_D \right)
+\left( \frac{\text{No. of Cat A}}{\text{Max No. of A}} \times Weight_A \right) + 
+\left( \frac{\text{No. of Cat B}}{\text{Max No. of B}} \times Weight_B \right) + 
+\left( \frac{\text{No. of Cat D}}{\text{Max No. of D}} \times Weight_D \right)
 """)
 st.space("medium")
 
