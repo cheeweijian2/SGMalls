@@ -162,7 +162,7 @@ score_chart = (
             alt.Tooltip("mall_name:N", title="Mall"),
             alt.Tooltip("category:N", title="Category"),
             alt.Tooltip("score_contribution:Q", title="Category Score", format=".1f"),
-            alt.Tooltip("readiness_score:Q", title="Total Readiness Score", format=".1f")
+            alt.Tooltip("readiness_score:Q", title="HPM Index", format=".1f")
         ]
     )
 )
