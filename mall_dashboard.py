@@ -61,9 +61,9 @@ col2.metric("Current HPM Malls", len(filtered[filtered["HPM"] == 1]))
 # Mall Readiness Score
 # ---------------------------------------------------------------------------
 st.divider()
-st.subheader("Mall readiness score")
+st.subheader("Proposed HPM Index")
 st.latex(r"""
-\text{Readiness Score} = 
+\text{HPM Index} = 
 \left( \frac{\text{No. of Cat A}}{\text{Max No. of A}} \times Weight_A \right) + 
 \left( \frac{\text{No. of Cat B}}{\text{Max No. of B}} \times Weight_B \right) + 
 \left( \frac{\text{No. of Cat D}}{\text{Max No. of D}} \times Weight_D \right)
@@ -127,7 +127,7 @@ scored["cat_b_score"] = (scored["cat_b_count"] / max_cat_b) * w_cat_b
 scored["cat_d_score"] = (scored["cat_d_count"] / max_cat_d) * w_cat_d
 scored["readiness_score"] = scored["cat_a_score"] + scored["cat_b_score"] + scored["cat_d_score"]
 
-score_top_n = st.slider("Show top N by readiness score", 5, 50, 15, key="score_top_n")
+score_top_n = st.slider("Show top N by HPM Index", 5, 50, 15, key="score_top_n")
 top_scored = scored.sort_values("readiness_score", ascending=False).head(score_top_n)
 
 top_scored_long = top_scored.melt(
@@ -149,7 +149,7 @@ score_chart = (
     .mark_bar()
     .encode(
         x=alt.X("mall_name:N", sort=top_scored["mall_name"].tolist(), title="Mall"),
-        y=alt.Y("score_contribution:Q", title="Readiness Score (0-100)"),
+        y=alt.Y("score_contribution:Q", title="HPM Index (0-100)"),
         color=alt.Color(
             "category:N", 
             title="Category Component",
