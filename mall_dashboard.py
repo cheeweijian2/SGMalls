@@ -62,6 +62,13 @@ col2.metric("Current HPM Malls", len(filtered[filtered["HPM"] == 1]))
 # ---------------------------------------------------------------------------
 st.divider()
 st.subheader("Mall readiness score")
+st.latex(r"""
+\text{Readiness Score} = 
+\left( \frac{\text{Cat A}}{\text{Max A}} \times W_A \right) + 
+\left( \frac{\text{Cat B}}{\text{Max B}} \times W_B \right) + 
+\left( \frac{\text{Cat D}}{\text{Max D}} \times W_D \right)
+""")
+st.space("medium")
 
 scored = filtered.copy()
 scored["cat_a_count"] = scored["HDP Outlet"]
