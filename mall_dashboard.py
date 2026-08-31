@@ -2,6 +2,7 @@ import altair as alt
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
+import io
 
 # ---------------------------------------------------------------------------
 # Config
@@ -25,12 +26,15 @@ summary_file = st.file_uploader("Upload CSV", type="csv")
 butt = st.checkbox("Use sample data")
 if butt:
     summary_file = "mall_locations_summary.csv"
+    summary_file = st.secrets["my_data"]["csv_string"]
 
 if summary_file is None:
     st.info("Upload a CSV to get started.")
     st.stop()
 
-summary = load_summary(summary_file)
+# summary = load_summary(summary_file)
+
+summary = pd.read_csv(io.StringIO(summary_file))
 
 # ---------------------------------------------------------------------------
 # Sidebar filters
