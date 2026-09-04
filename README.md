@@ -7,7 +7,7 @@ satisfy the current criteria set.
 ## Pipeline order
 
 ```
-openv5.py  ->  full_df.csv  ->  mall_transformation_pipeline.py  ->  mall_locations_summary2.csv
+openv5.py  ->  full_df.csv  ->  mall_transformation_pipeline.py  ->  mall_locations_summary.csv
 ```
 
 1. **`openv5.py`** (run separately, first)
@@ -23,7 +23,7 @@ openv5.py  ->  full_df.csv  ->  mall_transformation_pipeline.py  ->  mall_locati
    - `apply_datamart_and_satisfy()` — merges in `datamart_summary.csv` and
      computes the `satisfy` flag (bike rack or playground, at least one gym,
      at least one HPB event, at least 3 HDP outlets).
-   - Writes `mall_locations_summary2.csv`.
+   - Writes `mall_locations_summary.csv`.
 
 ## Required input files
 
@@ -44,7 +44,7 @@ All expected under `DATA_DIR` (currently hardcoded at the top of
 
 ## Output
 
-- **`mall_locations_summary2.csv`** — one row per mall with amenity counts by
+- **`mall_locations_summary.csv`** — one row per mall with amenity counts by
   category, `has_bike_rack`, `has_playground`, coordinates, HPM flag,
   datamart fields, and the final `satisfy` column.
 
