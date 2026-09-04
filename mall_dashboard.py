@@ -1,4 +1,3 @@
-import io
 import json
 from pathlib import Path
 
@@ -17,6 +16,8 @@ st.set_page_config(page_title="Mall Amenities Dashboard", layout="wide")
 @st.cache_data
 def load_summary(path):
     df = pd.read_csv(path)
+    # Strip whitespace from column headers to prevent KeyError
+    df.columns = df.columns.str.strip()
     df = df.rename(columns={df.columns[0]: "mall_name"})
     return df
 
@@ -68,32 +69,32 @@ def recompute_satisfy(df):
         & (df["HDP Outlet"] >= 3)
     ).astype(int)
 
- 
+
 st.title("🏬 Mall Amenities Dashboard")
 st.caption("HDP outlets, gyms, clinics, and bike rack proximity across Singapore malls.")
- 
+
 # ---------------------------------------------------------------------------
-# Data source — upload a CSV, or pull the (sensitive) summary out of
-# Streamlit secrets. See mall_transformation_pipeline.py in the main repo
-# for how mall_locations_summary.csv itself is produced.
+# Data source — mall_locations_summary.csv is committed directly in this
+# (private) repo, right alongside this script. See
+# mall_transformation_pipeline.py in the main repo for how it's produced.
 # ---------------------------------------------------------------------------
 summary_file = st.file_uploader("Upload CSV", type="csv")
 butt = st.checkbox("Use sample data")
+
+DEFAULT_SUMMARY_PATH = APP_DIR / "mall_locations_summary.csv"
 if butt:
-    summary_file = st.secrets["my_data"]["csv_string"]
+    summary_file = DEFAULT_SUMMARY_PATH
 
 if summary_file is None:
     st.info("Upload a CSV to get started.")
     st.stop()
 
-# summary = load_summary(summary_file)
-
-summary = pd.read_csv(io.StringIO(summary_file))
+summary = load_summary(summary_file)
 
 # ---------------------------------------------------------------------------
 # Bike rack distance (dynamic) — recomputes has_bike_rack + satisfy live.
-# Does not change the secret / uploaded CSV in any way — only what this
-# dashboard session shows.
+# Does not change mall_locations_summary.csv on disk in any way — only
+# what this dashboard session shows.
 # ---------------------------------------------------------------------------
 st.sidebar.header("Bike rack proximity")
 bike_distance_m = st.sidebar.slider(
