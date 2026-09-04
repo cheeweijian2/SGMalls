@@ -1,8 +1,13 @@
+import io
+import json
+from pathlib import Path
+
 import altair as alt
+import numpy as np
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
-import io
+from pyproj import Transformer
 
 # ---------------------------------------------------------------------------
 # Config
@@ -15,17 +20,66 @@ def load_summary(path):
     df = df.rename(columns={df.columns[0]: "mall_name"})
     return df
 
+# Resolve relative to this script (not a local machine path) so it works
+# the same way here and once deployed — _data/LTABicycleRackGEOJSON.geojson
+# is committed alongside this file in the repo.
+APP_DIR = Path(__file__).resolve().parent
+BIKE_RACK_GEOJSON_PATH = APP_DIR / "_data" / "LTABicycleRackGEOJSON.geojson"
+
+_TO_SVY21 = Transformer.from_crs("EPSG:4326", "EPSG:3414", always_xy=True)
+
+
+@st.cache_data
+def load_bike_rack_points(path):
+    """Loads raw bike rack point coordinates and projects them to SVY21
+    (metres) once. Recomputing has_bike_rack for a new slider value is then
+    just a distance check against these cached points, not a re-parse of
+    the geojson."""
+    with open(path) as f:
+        gj = json.load(f)
+    lonlat = np.array([feat["geometry"]["coordinates"][:2] for feat in gj["features"]])
+    x, y = _TO_SVY21.transform(lonlat[:, 0], lonlat[:, 1])
+    return x, y
+
+
+def compute_has_bike_rack(mall_lon, mall_lat, bike_x, bike_y, distance_m):
+    """Recomputes has_bike_rack (0/1) per mall for an arbitrary distance
+    threshold, in metres. Equivalent to the buffer + spatial-join in the
+    archived mall_pipeline_lib.py's compute_bike_rack_flags(), done here as
+    a min-distance check so it's cheap enough to run on every slider move."""
+    mall_x, mall_y = _TO_SVY21.transform(mall_lon.to_numpy(), mall_lat.to_numpy())
+    dx = mall_x[:, None] - bike_x[None, :]
+    dy = mall_y[:, None] - bike_y[None, :]
+    dist = np.sqrt(dx**2 + dy**2)
+    return (dist.min(axis=1) <= distance_m).astype(int)
+
+
+def recompute_satisfy(df):
+    """Re-applies the 'satisfy' criteria using whatever has_bike_rack is
+    currently in df. Same formula as apply_datamart_and_satisfy() in the
+    archived mall_pipeline_lib.py (supermarket_count condition included
+    there but commented out, kept consistent here)."""
+    has_bike_or_playground = (df["has_bike_rack"] >= 1) | (df["has_playground"] >= 1)
+    total_gyms = df["Gym/Sports (CSV)"] + df["Gym (GeoJSON)"]
+    return (
+        has_bike_or_playground
+        & (total_gyms >= 1)
+        & (df["hpb_event_count"] >= 1)
+        & (df["HDP Outlet"] >= 3)
+    ).astype(int)
+
  
 st.title("🏬 Mall Amenities Dashboard")
 st.caption("HDP outlets, gyms, clinics, and bike rack proximity across Singapore malls.")
  
 # ---------------------------------------------------------------------------
-# Data source — upload the CSV produced by mall_data_pipeline.py
+# Data source — upload a CSV, or pull the (sensitive) summary out of
+# Streamlit secrets. See mall_transformation_pipeline.py in the main repo
+# for how mall_locations_summary.csv itself is produced.
 # ---------------------------------------------------------------------------
 summary_file = st.file_uploader("Upload CSV", type="csv")
 butt = st.checkbox("Use sample data")
 if butt:
-    summary_file = "mall_locations_summary.csv"
     summary_file = st.secrets["my_data"]["csv_string"]
 
 if summary_file is None:
@@ -35,6 +89,29 @@ if summary_file is None:
 # summary = load_summary(summary_file)
 
 summary = pd.read_csv(io.StringIO(summary_file))
+
+# ---------------------------------------------------------------------------
+# Bike rack distance (dynamic) — recomputes has_bike_rack + satisfy live.
+# Does not change the secret / uploaded CSV in any way — only what this
+# dashboard session shows.
+# ---------------------------------------------------------------------------
+st.sidebar.header("Bike rack proximity")
+bike_distance_m = st.sidebar.slider(
+    "Bike rack distance threshold (m)", 0, 1000, 200, step=10,
+    help="How close a bike rack must be to a mall to count as 'has a bike rack'. "
+    "Recomputes has_bike_rack and the satisfy criteria live for this session only."
+)
+try:
+    bike_x, bike_y = load_bike_rack_points(BIKE_RACK_GEOJSON_PATH)
+    summary["has_bike_rack"] = compute_has_bike_rack(
+        summary["longitude"], summary["latitude"], bike_x, bike_y, bike_distance_m
+    )
+    summary["satisfy"] = recompute_satisfy(summary)
+except FileNotFoundError:
+    st.sidebar.warning(
+        "Couldn't find LTABicycleRackGEOJSON.geojson in _data — showing "
+        "has_bike_rack / satisfy as-is from the loaded data instead."
+    )
 
 # ---------------------------------------------------------------------------
 # Sidebar filters
