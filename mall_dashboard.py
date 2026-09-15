@@ -1,15 +1,6 @@
 """
 Mall Amenities Dashboard.
 
-Combines the adjustable satisfy criteria (with a plain amenity-counts
-table) and the weighted HPM Index score into one script, in separate tabs
-(st.tabs) that share one sidebar (data upload, bike rack distance, satisfy
-criteria, filters) and one map at the bottom. Earlier iterations kept
-these as two separate scripts, and briefly as separate multi-page app
-pages; see _old/mall_dashboard_v1.py and _old/mall_dashboard_v2.py for
-those. Tabs (rather than pages) were chosen deliberately: everything
-renders in a single script run, so there's no risk of the widget-state
-reset that came with Streamlit's multi-page mode.
 """
 
 import json
@@ -82,7 +73,7 @@ DEFAULT_MIN_HDP_OUTLETS = 3
 DEFAULT_MIN_SUPERMARKET = 1
 
 
-def recompute_satisfy(
+def compute_satisfy_groups(
     df,
     include_bike_rack=DEFAULT_INCLUDE_BIKE_RACK,
     include_playground=DEFAULT_INCLUDE_PLAYGROUND,
@@ -90,11 +81,11 @@ def recompute_satisfy(
     min_hdp_outlets=DEFAULT_MIN_HDP_OUTLETS,
     min_supermarket=DEFAULT_MIN_SUPERMARKET,
 ):
-    """Re-applies the 'satisfy' criteria using whatever has_bike_rack is
-    currently in df, with every threshold configurable instead of hardcoded.
-    Gyms/sports facilities are not part of this criteria at all (removed by
-    request). A mall must meet all three groups below; the third group is
-    met by either of its listed conditions:
+    """The three satisfy-criteria groups, as individual boolean Series
+    rather than one combined flag — shared by recompute_satisfy() (which
+    just ANDs them together) and by anything that wants to show *which*
+    group(s) a mall is failing. A mall must meet all three groups; the
+    third group is met by either of its listed conditions:
       - bike rack (if include_bike_rack), or playground (if
         include_playground) — if neither is enabled, this group is treated
         as satisfied automatically (the check is effectively switched off)
@@ -117,6 +108,30 @@ def recompute_satisfy(
     if "supermarket_count" in df.columns:
         retail_dining_ok = retail_dining_ok | (df["supermarket_count"] >= min_supermarket)
 
+    return active_living_ok, events_ok, retail_dining_ok
+
+
+def recompute_satisfy(
+    df,
+    include_bike_rack=DEFAULT_INCLUDE_BIKE_RACK,
+    include_playground=DEFAULT_INCLUDE_PLAYGROUND,
+    min_hpb_events=DEFAULT_MIN_HPB_EVENTS,
+    min_hdp_outlets=DEFAULT_MIN_HDP_OUTLETS,
+    min_supermarket=DEFAULT_MIN_SUPERMARKET,
+):
+    """Re-applies the 'satisfy' criteria using whatever has_bike_rack is
+    currently in df, with every threshold configurable instead of hardcoded.
+    Gyms/sports facilities are not part of this criteria at all (removed by
+    request). See compute_satisfy_groups() for what the three groups are —
+    a mall must meet all three."""
+    active_living_ok, events_ok, retail_dining_ok = compute_satisfy_groups(
+        df,
+        include_bike_rack=include_bike_rack,
+        include_playground=include_playground,
+        min_hpb_events=min_hpb_events,
+        min_hdp_outlets=min_hdp_outlets,
+        min_supermarket=min_supermarket,
+    )
     return (active_living_ok & events_ok & retail_dining_ok).astype(int)
 
 
@@ -308,88 +323,176 @@ with tab_criteria:
         hide_index=True,
     )
 
+    # -----------------------------------------------------------------
+    # Current HPM malls that DON'T satisfy the criteria above — built from
+    # the full (unfiltered-by-checkbox) summary, not `filtered`, since the
+    # "Show current HPMs" / "Show malls that satisfy..." sidebar checkboxes
+    # would otherwise hide exactly the malls this section exists to show.
+    # The search box still applies, for consistency with the rest of the
+    # page. Uses compute_satisfy_groups() so the failing group(s) can be
+    # called out per mall rather than just showing a single satisfy flag.
+    # -----------------------------------------------------------------
+    st.divider()
+    st.subheader("Current HPM malls not satisfying criteria")
+    st.caption(
+        "Current HPM malls (HPM == 1) that don't meet the satisfy criteria "
+        "above, given the current thresholds. Ignores the \"Show current "
+        "HPMs\" / \"Show malls that satisfy...\" filters (those would "
+        "otherwise hide this exact set) but still respects the search box."
+    )
+
+    hpm_gap = summary[(summary["HPM"] == 1) & (summary["satisfy"] == 0)].copy()
+    if search:
+        hpm_gap = hpm_gap[hpm_gap["mall_name"].str.contains(search, case=False, na=False)]
+
+    st.metric("Current HPM malls not satisfying criteria", len(hpm_gap))
+
+    if hpm_gap.empty:
+        st.success("Every current HPM mall satisfies the current criteria.")
+    else:
+        active_living_ok, events_ok, retail_dining_ok = compute_satisfy_groups(
+            hpm_gap,
+            include_bike_rack=satisfy_include_bike_rack,
+            include_playground=satisfy_include_playground,
+            min_hpb_events=satisfy_min_hpb,
+            min_hdp_outlets=satisfy_min_hdp,
+            min_supermarket=satisfy_min_supermarket,
+        )
+        hpm_gap["Active living OK"] = active_living_ok
+        hpm_gap["HPB events OK"] = events_ok
+        hpm_gap["Retail/dining OK"] = retail_dining_ok
+
+        gap_cols = [
+            "mall_name", "Active living OK", "HPB events OK", "Retail/dining OK",
+            "has_bike_rack", "has_playground", "hpb_event_count", "HDP Outlet",
+        ]
+        if "supermarket_count" in hpm_gap.columns:
+            gap_cols.append("supermarket_count")
+
+        st.dataframe(
+            hpm_gap[gap_cols].sort_values("mall_name"),
+            width="stretch",
+            hide_index=True,
+        )
+        st.caption(
+            "A False in any of the three \"OK\" columns is the group that "
+            "mall is failing — see recompute_satisfy() / "
+            "compute_satisfy_groups() for exactly how each is defined."
+        )
+
 with tab_score:
     st.subheader("Proposed HPM Index")
+    st.caption(
+        "Cat A: HDP outlets" + (" + supermarkets" if "supermarket_count" in filtered.columns else "") + ". "
+        "Cat B: bike racks + playgrounds + gyms/sports facilities (GeoJSON + CSV). "
+        "Cat C: HPB event/session counts, total participation, and H365 (EDSH store "
+        "count + 12-month scans). "
+        "Cat D: CHAS + PHPC clinics. "
+        "Cat E: catchment population + catchment seniors."
+    )
     st.latex(r"""
     \text{HPM Index} =
-    \left( \frac{\text{No. of Cat A}}{\text{Max No. of A}} \times Weight_A \right) +
-    \left( \frac{\text{No. of Cat B}}{\text{Max No. of B}} \times Weight_B \right) +
-    \left( \frac{\text{No. of Cat D}}{\text{Max No. of D}} \times Weight_D \right)
+    \left( \bar{r}_A \times Weight_A \right) +
+    \left( \bar{r}_B \times Weight_B \right) +
+    \left( \bar{r}_C \times Weight_C \right) +
+    \left( \bar{r}_D \times Weight_D \right) +
+    \left( \bar{r}_E \times Weight_E \right)
     """)
+    st.caption(
+        "Each Cat's r̄ (\"r-bar\") is the average, across that category's own "
+        "fields, of (that field's value ÷ its own max across all malls) — so "
+        "every field counts equally toward its category regardless of raw "
+        "scale (e.g. Cat C's edsh_scan_count_12m, which can run into the "
+        "thousands, no longer drowns out hpb_event_count, which is usually "
+        "single digits), before the category's weight is applied."
+    )
     st.space("medium")
 
     scored = filtered.copy()
-    scored["cat_a_count"] = scored["HDP Outlet"] + scored["Gym (GeoJSON)"] + scored["Gym/Sports (CSV)"]
-    scored["cat_b_count"] = scored["has_bike_rack"]
-    scored["cat_d_count"] = scored["Clinic (PHPC)"] + scored["Clinic (CHAS)"]
 
-    max_cat_a = max(scored["cat_a_count"].max(), 1)
-    max_cat_b = max(scored["cat_b_count"].max(), 1)
-    max_cat_d = max(scored["cat_d_count"].max(), 1)
+    # Each category sums the raw columns that feed it (see the caption above);
+    # Cat A optionally folds in supermarket_count when that column is loaded,
+    # same as the satisfy criteria's retail/dining group.
+    _cat_a_cols = ["HDP Outlet"] + (["supermarket_count"] if "supermarket_count" in scored.columns else [])
+    CATEGORY_DEFS = [
+        ("a", "Cat A: Healthy Dining Ecosystem", _cat_a_cols),
+        ("b", "Cat B: Active Living Infrastructure", ["has_bike_rack", "has_playground", "Gym (GeoJSON)", "Gym/Sports (CSV)"]),
+        ("c", "Cat C: HPB & H365 Engagement", ["hpb_event_count", "hpb_session_count", "total_participation", "edsh_store_count", "edsh_scan_count_12m"]),
+        ("d", "Cat D: Healthcare Ecosystem", ["Clinic (PHPC)", "Clinic (CHAS)"]),
+        ("e", "Cat E: Population Demographics", ["catchment_population", "catchment_seniors"]),
+    ]
+    # Colours are the dataviz skill's validated categorical palette, slots
+    # 1-5 in fixed order (never cycled): blue, orange, aqua, yellow, magenta.
+    CATEGORY_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"]
 
-    # Sliders with callbacks
-    if "w_cat_a" not in st.session_state:
-        st.session_state.w_cat_a = 35
-    if "w_cat_b" not in st.session_state:
-        st.session_state.w_cat_b = 35
-    if "w_cat_d" not in st.session_state:
-        st.session_state.w_cat_d = 30
+    # Normalize each field to 0-1 (value / that field's own max across all
+    # malls) BEFORE combining anything, then average the normalized fields
+    # within each category. That average is already a 0-1 ratio, so no
+    # further per-category max-normalization step is needed before
+    # weighting — unlike summing the raw fields first (the previous
+    # approach), where a category could be dominated by whichever field
+    # happened to have the largest raw scale.
+    for key, _label, cols in CATEGORY_DEFS:
+        normalized_fields = pd.DataFrame({
+            col: scored[col] / max(scored[col].max(), 1) for col in cols
+        })
+        scored[f"cat_{key}_ratio"] = normalized_fields.mean(axis=1)
 
-    def update_a():
-        rem = 100 - st.session_state.w_cat_a
-        other_sum = st.session_state.w_cat_b + st.session_state.w_cat_d
-        if other_sum > 0:
-            st.session_state.w_cat_b = int(round(rem * (st.session_state.w_cat_b / other_sum)))
-            st.session_state.w_cat_d = rem - st.session_state.w_cat_b
-        else:
-            st.session_state.w_cat_b = rem // 2
-            st.session_state.w_cat_d = rem - st.session_state.w_cat_b
+    # Sliders with callbacks — every category's weight key defaults once,
+    # then _rebalance_weights() keeps all of them summing to 100 regardless
+    # of how many categories there are (generalizes the old hardcoded
+    # pairwise 3-category rebalance to N categories).
+    DEFAULT_WEIGHTS = {"a": 25, "b": 20, "c": 20, "d": 20, "e": 15}  # sums to 100
+    weight_keys = [f"w_cat_{key}" for key, _label, _cols in CATEGORY_DEFS]
+    for key, default in DEFAULT_WEIGHTS.items():
+        wkey = f"w_cat_{key}"
+        if wkey not in st.session_state:
+            st.session_state[wkey] = default
 
-    def update_b():
-        rem = 100 - st.session_state.w_cat_b
-        other_sum = st.session_state.w_cat_a + st.session_state.w_cat_d
-        if other_sum > 0:
-            st.session_state.w_cat_a = int(round(rem * (st.session_state.w_cat_a / other_sum)))
-            st.session_state.w_cat_d = rem - st.session_state.w_cat_a
-        else:
-            st.session_state.w_cat_a = rem // 2
-            st.session_state.w_cat_d = rem - st.session_state.w_cat_a
+    def _rebalance_weights(changed_key):
+        """Whatever slider the user just moved keeps its new value; the
+        remainder (100 - changed) is redistributed across the other
+        sliders in proportion to their current relative weights (or split
+        evenly if those are all currently zero). The last of the "other"
+        sliders absorbs the rounding remainder so the total is always
+        exactly 100."""
+        rem = 100 - st.session_state[changed_key]
+        other_keys = [k for k in weight_keys if k != changed_key]
+        other_sum = sum(st.session_state[k] for k in other_keys)
+        allocated = 0
+        for k in other_keys[:-1]:
+            share = int(round(rem * (st.session_state[k] / other_sum))) if other_sum > 0 else rem // len(other_keys)
+            st.session_state[k] = share
+            allocated += share
+        st.session_state[other_keys[-1]] = rem - allocated
 
-    def update_d():
-        rem = 100 - st.session_state.w_cat_d
-        other_sum = st.session_state.w_cat_a + st.session_state.w_cat_b
-        if other_sum > 0:
-            st.session_state.w_cat_a = int(round(rem * (st.session_state.w_cat_a / other_sum)))
-            st.session_state.w_cat_b = rem - st.session_state.w_cat_a
-        else:
-            st.session_state.w_cat_a = rem // 2
-            st.session_state.w_cat_b = rem - st.session_state.w_cat_a
+    def _make_on_change(key):
+        return lambda: _rebalance_weights(key)
 
-    w_col1, w_col2, w_col3 = st.columns(3)
-    w_cat_a = w_col1.slider("Category A: Health Promoting Infrastructure (%)", 0, 100, key="w_cat_a", on_change=update_a)
-    w_cat_b = w_col2.slider("Category B: Active Living Infrastructure (%)", 0, 100, key="w_cat_b", on_change=update_b)
-    w_cat_d = w_col3.slider("Category D: Healthcare Ecosystem (%)", 0, 100, key="w_cat_d", on_change=update_d)
+    weight_cols = st.columns(len(CATEGORY_DEFS))
+    weights = {}
+    for col, (key, label, _cols) in zip(weight_cols, CATEGORY_DEFS):
+        wkey = f"w_cat_{key}"
+        weights[key] = col.slider(f"{label} (%)", 0, 100, key=wkey, on_change=_make_on_change(wkey))
 
-    scored["cat_a_score"] = (scored["cat_a_count"] / max_cat_a) * w_cat_a
-    scored["cat_b_score"] = (scored["cat_b_count"] / max_cat_b) * w_cat_b
-    scored["cat_d_score"] = (scored["cat_d_count"] / max_cat_d) * w_cat_d
-    scored["readiness_score"] = scored["cat_a_score"] + scored["cat_b_score"] + scored["cat_d_score"]
+    for key, _label, _cols in CATEGORY_DEFS:
+        scored[f"cat_{key}_score"] = scored[f"cat_{key}_ratio"] * weights[key]
+
+    score_cols = [f"cat_{key}_score" for key, _label, _cols in CATEGORY_DEFS]
+    scored["readiness_score"] = scored[score_cols].sum(axis=1)
 
     score_top_n = st.slider("Show top N by HPM Index", 5, 50, 15, key="score_top_n")
     top_scored = scored.sort_values("readiness_score", ascending=False).head(score_top_n)
 
     top_scored_long = top_scored.melt(
         id_vars=["mall_name", "readiness_score"],
-        value_vars=["cat_a_score", "cat_b_score", "cat_d_score"],
+        value_vars=score_cols,
         var_name="category",
         value_name="score_contribution"
     )
 
-    category_labels = {
-        "cat_a_score": "Cat A: Health Promoting Infrastructure",
-        "cat_b_score": "Cat B: Active Living Infrastructure",
-        "cat_d_score": "Cat D: Healthcare Ecosystem"
-    }
+    category_labels = {f"cat_{key}_score": label for key, label, _cols in CATEGORY_DEFS}
+    category_order = [label for _key, label, _cols in CATEGORY_DEFS]
     top_scored_long["category"] = top_scored_long["category"].map(category_labels)
 
     score_chart = (
@@ -402,8 +505,8 @@ with tab_score:
                 "category:N",
                 title="Category Component",
                 scale=alt.Scale(
-                    domain=["Cat A: Health Promoting Infrastructure", "Cat B: Active Living Infrastructure", "Cat D: Healthcare Ecosystem"],
-                    range=["#ff7f00", "#4daf4a", "#377eb8"]  # Orange, Green, Blue
+                    domain=category_order,
+                    range=CATEGORY_COLORS
                 )
             ),
             tooltip=[
@@ -417,15 +520,10 @@ with tab_score:
 
     st.altair_chart(score_chart, width="stretch")
 
+    score_table_rename = {"readiness_score": "HPM Index"}
+    score_table_rename.update({f"cat_{key}_score": f"Cat {key.upper()} Score" for key, _label, _cols in CATEGORY_DEFS})
     st.dataframe(
-        top_scored[
-            ["mall_name", "readiness_score", "cat_a_score", "cat_b_score", "cat_d_score", "HPM"]
-        ].rename(columns={
-            "readiness_score": "HPM Index",
-            "cat_a_score": "Cat A Score",
-            "cat_b_score": "Cat B Score",
-            "cat_d_score": "Cat D Score"
-        }),
+        top_scored[["mall_name", "readiness_score"] + score_cols + ["HPM"]].rename(columns=score_table_rename),
         width="stretch",
         hide_index=True,
     )
