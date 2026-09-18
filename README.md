@@ -54,6 +54,11 @@ All expected under `DATA_DIR` (currently hardcoded at the top of
 - Bike racks are matched by proximity (200m buffer, SVY21/EPSG:3414), not
   exact postal code, since racks usually sit just outside a mall's own
   postal boundary.
-- The `satisfy` criteria currently checks: (bike rack OR playground) AND
-  (≥1 gym, CSV + geojson combined) AND (≥1 HPB event) AND (≥3 HDP outlets).
-  The `supermarket_count` condition is present in the code but commented out.
+- The `satisfy` criteria in `mall_transformation_pipeline.py` checks:
+  (bike rack OR playground) AND (≥1 gym, CSV + geojson combined) AND
+  (≥1 HPB event) AND (≥3 HDP outlets). A supermarket requirement
+  (`supermarket_outlet_count` >= 1, as its own AND condition, not an
+  alternative to HDP outlets) is written but commented out here.
+  `mall_dashboard.py`'s configurable criteria applies that supermarket
+  requirement live, as an independent AND condition alongside — not
+  instead of — the HDP outlet requirement.
