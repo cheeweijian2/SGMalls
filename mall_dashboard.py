@@ -1,6 +1,12 @@
 """
 Mall Amenities Dashboard.
 
+Combines the adjustable satisfy criteria (with a plain amenity-counts
+table) and the weighted HPM Index score in one script, in separate tabs
+(st.tabs) that share one sidebar (data upload, bike rack distance, HDP
+outlet data source, satisfy criteria, filters) and one map at the bottom.
+Tabs render in a single script run rather than as separate pages, so
+switching between them can't reset any widget's state.
 """
 
 import json
@@ -31,6 +37,8 @@ def load_summary(path):
 # is committed alongside this file in the repo.
 APP_DIR = Path(__file__).resolve().parent
 BIKE_RACK_GEOJSON_PATH = APP_DIR / "_data" / "LTABicycleRackGEOJSON.geojson"
+FULL_DF_PATH = APP_DIR / "_data" / "full_df.csv"
+HDP_CURRENT_PATH = APP_DIR / "_data" / "clean_hdp_FINAL.csv"
 
 _TO_SVY21 = Transformer.from_crs("EPSG:4326", "EPSG:3414", always_xy=True)
 
@@ -60,12 +68,53 @@ def compute_has_bike_rack(mall_lon, mall_lat, bike_x, bike_y, distance_m):
     return (dist.min(axis=1) <= distance_m).astype(int)
 
 
+@st.cache_data
+def load_mall_postals(path):
+    """(postal, mall_name) pairs from full_df.csv — a mall can have
+    multiple postal codes (different entrances/buildings under one mall
+    name), so this is a many-postals-to-one-mall table, not a simple
+    mall_name -> single-postal lookup. Same shape
+    mall_transformation_pipeline.py's malls_for_merge uses. Needed to
+    recompute HDP Outlet counts live from a raw postal-code list, the same
+    way compute_has_bike_rack() above recomputes bike rack flags live from
+    raw coordinates instead of a pre-baked column."""
+    df = pd.read_csv(path, dtype={"postal": str})
+    df = df.rename(columns={"name": "mall_name"})
+    df["postal"] = df["postal"].astype(str).str.strip().str.zfill(6)
+    return df[["postal", "mall_name"]]
+
+
+@st.cache_data
+def load_hdp_postals(path, postal_column):
+    """Raw list of HDP outlet postal codes (one row per outlet) from
+    whichever source CSV is selected, zero-padded to 6 digits — Singapore
+    postal codes are always 6 digits, and some source files drop leading
+    zeros (see HDP_postals_clean.csv)."""
+    df = pd.read_csv(path, dtype=str)
+    return df[postal_column].astype(str).str.strip().str.zfill(6)
+
+
+def compute_hdp_outlet_count(mall_postal_pairs, hdp_postals):
+    """Counts how many HDP outlet postal codes match any of a mall's
+    postal codes — the same exact-match-then-groupby approach
+    mall_transformation_pipeline.py's build_amenity_summary() uses for the
+    HDP Outlet column, done here so the sidebar toggle below can swap
+    sources live instead of needing a full pipeline re-run. Returns a
+    Series indexed by mall_name (malls with zero matches are absent, not
+    zero — the caller reindexes/fills that)."""
+    hdp_df = pd.DataFrame({"postal": hdp_postals})
+    mapped = pd.merge(hdp_df, mall_postal_pairs, how="left", on="postal")
+    matched = mapped[mapped["mall_name"].notnull()]
+    return matched.groupby("mall_name").size()
+
+
 # Defaults reproduce a close match to the original pipeline's satisfy-flag
-# criteria. A mall must satisfy all three groups below; within the third
-# group, meeting either listed condition is enough:
-#   - bike rack / playground
+# criteria, plus a separate supermarket requirement. A mall must satisfy
+# all of the following:
+#   - bike rack OR playground
 #   - HPB events (on its own)
-#   - HDP outlets / supermarkets
+#   - HDP outlets (on its own)
+#   - supermarkets (on its own, only if that column is loaded)
 DEFAULT_INCLUDE_BIKE_RACK = True
 DEFAULT_INCLUDE_PLAYGROUND = True
 DEFAULT_MIN_HPB_EVENTS = 1
@@ -81,17 +130,19 @@ def compute_satisfy_groups(
     min_hdp_outlets=DEFAULT_MIN_HDP_OUTLETS,
     min_supermarket=DEFAULT_MIN_SUPERMARKET,
 ):
-    """The three satisfy-criteria groups, as individual boolean Series
-    rather than one combined flag — shared by recompute_satisfy() (which
-    just ANDs them together) and by anything that wants to show *which*
-    group(s) a mall is failing. A mall must meet all three groups; the
-    third group is met by either of its listed conditions:
+    """The satisfy-criteria groups, as individual boolean Series rather
+    than one combined flag — shared by recompute_satisfy() (which just ANDs
+    them together) and by anything that wants to show *which* group(s) a
+    mall is failing. A mall must meet all of:
       - bike rack (if include_bike_rack), or playground (if
         include_playground) — if neither is enabled, this group is treated
         as satisfied automatically (the check is effectively switched off)
       - hpb_event_count >= min_hpb_events (on its own)
-      - HDP outlets >= min_hdp_outlets, or supermarket_count >=
-        min_supermarket (only if that column is loaded)
+      - HDP Outlet >= min_hdp_outlets (on its own)
+      - supermarket_outlet_count >= min_supermarket, as a SEPARATE
+        requirement from HDP outlets (both must independently pass) —
+        only checked if that column is loaded, otherwise treated as
+        satisfied automatically
     """
     if not include_bike_rack and not include_playground:
         active_living_ok = pd.Series(True, index=df.index)
@@ -104,11 +155,14 @@ def compute_satisfy_groups(
 
     events_ok = df["hpb_event_count"] >= min_hpb_events
 
-    retail_dining_ok = df["HDP Outlet"] >= min_hdp_outlets
-    if "supermarket_count" in df.columns:
-        retail_dining_ok = retail_dining_ok | (df["supermarket_count"] >= min_supermarket)
+    hdp_ok = df["HDP Outlet"] >= min_hdp_outlets
 
-    return active_living_ok, events_ok, retail_dining_ok
+    if "supermarket_outlet_count" in df.columns:
+        supermarket_ok = df["supermarket_outlet_count"] >= min_supermarket
+    else:
+        supermarket_ok = pd.Series(True, index=df.index)
+
+    return active_living_ok, events_ok, hdp_ok, supermarket_ok
 
 
 def recompute_satisfy(
@@ -122,9 +176,9 @@ def recompute_satisfy(
     """Re-applies the 'satisfy' criteria using whatever has_bike_rack is
     currently in df, with every threshold configurable instead of hardcoded.
     Gyms/sports facilities are not part of this criteria at all (removed by
-    request). See compute_satisfy_groups() for what the three groups are —
-    a mall must meet all three."""
-    active_living_ok, events_ok, retail_dining_ok = compute_satisfy_groups(
+    request). See compute_satisfy_groups() for what the groups are — a mall
+    must meet all of them."""
+    active_living_ok, events_ok, hdp_ok, supermarket_ok = compute_satisfy_groups(
         df,
         include_bike_rack=include_bike_rack,
         include_playground=include_playground,
@@ -132,7 +186,7 @@ def recompute_satisfy(
         min_hdp_outlets=min_hdp_outlets,
         min_supermarket=min_supermarket,
     )
-    return (active_living_ok & events_ok & retail_dining_ok).astype(int)
+    return (active_living_ok & events_ok & hdp_ok & supermarket_ok).astype(int)
 
 
 st.title("🏬 Mall Amenities Dashboard")
@@ -181,6 +235,31 @@ except FileNotFoundError:
     )
 
 # ---------------------------------------------------------------------------
+# HDP outlets — recomputes the "HDP Outlet" count per mall live from the
+# raw postal-code list, the same way the bike rack section above recomputes
+# has_bike_rack. Does not change mall_locations_summary.csv on disk in any
+# way — only what this dashboard session shows.
+#
+# Tampines 1's postal in full_df.csv (529540) is wrong — hardcoded here to
+# the correct postal, 529536, instead.
+# ---------------------------------------------------------------------------
+hdp_ok = True
+try:
+    mall_postal_pairs = load_mall_postals(FULL_DF_PATH)
+    mall_postal_pairs.loc[
+        mall_postal_pairs["mall_name"] == "Tampines 1", "postal"
+    ] = "529536"
+    hdp_postals = load_hdp_postals(HDP_CURRENT_PATH, "postal")
+    hdp_counts_by_mall = compute_hdp_outlet_count(mall_postal_pairs, hdp_postals)
+    summary["HDP Outlet"] = summary["mall_name"].map(hdp_counts_by_mall).fillna(0).astype(int)
+except FileNotFoundError:
+    hdp_ok = False
+    st.sidebar.warning(
+        "Couldn't find full_df.csv or the HDP postal source file in "
+        "_data — showing HDP Outlet as-is from the loaded data instead."
+    )
+
+# ---------------------------------------------------------------------------
 # Satisfy criteria (configurable) — see recompute_satisfy() above for exactly
 # how these combine.
 # ---------------------------------------------------------------------------
@@ -216,13 +295,13 @@ satisfy_min_hpb = st.sidebar.slider(
     "Minimum HPB events", 0, 10, key="satisfy_min_hpb"
 )
 
-has_supermarket_data = "supermarket_count" in summary.columns
+has_supermarket_data = "supermarket_outlet_count" in summary.columns
 satisfy_min_hdp = st.sidebar.slider(
     "Minimum HDP outlets", 0, 10, key="satisfy_min_hdp"
 )
 if has_supermarket_data:
     satisfy_min_supermarket = st.sidebar.slider(
-        "...or minimum supermarkets", 0, 5, key="satisfy_min_supermarket"
+        "Minimum supermarkets", 0, 5, key="satisfy_min_supermarket"
     )
 else:
     satisfy_min_supermarket = DEFAULT_MIN_SUPERMARKET
@@ -254,9 +333,9 @@ def _describe_satisfy_criteria():
         lines.append(", or ".join(active_living_parts))
     lines.append(f"At least {satisfy_min_hpb} HPB event{'s' if satisfy_min_hpb != 1 else ''}")
     if has_supermarket_data:
+        lines.append(f"At least {satisfy_min_hdp} HDP outlet{'s' if satisfy_min_hdp != 1 else ''}")
         lines.append(
-            f"At least {satisfy_min_hdp} HDP outlet{'s' if satisfy_min_hdp != 1 else ''}, "
-            f"or at least {satisfy_min_supermarket} supermarket{'s' if satisfy_min_supermarket != 1 else ''}"
+            f"At least {satisfy_min_supermarket} supermarket{'s' if satisfy_min_supermarket != 1 else ''}"
         )
     else:
         lines.append(
@@ -315,8 +394,8 @@ with tab_criteria:
         "mall_name", "HPM", "satisfy", "has_bike_rack", "has_playground",
         "Gym/Sports (CSV)", "Gym (GeoJSON)", "hpb_event_count", "HDP Outlet",
     ]
-    if "supermarket_count" in table_df.columns:
-        table_cols.append("supermarket_count")
+    if "supermarket_outlet_count" in table_df.columns:
+        table_cols.append("supermarket_outlet_count")
     st.dataframe(
         table_df[table_cols].rename(columns={"satisfy": "Satisfies criteria"}),
         width="stretch",
@@ -350,7 +429,7 @@ with tab_criteria:
     if hpm_gap.empty:
         st.success("Every current HPM mall satisfies the current criteria.")
     else:
-        active_living_ok, events_ok, retail_dining_ok = compute_satisfy_groups(
+        active_living_ok, events_ok, hdp_ok, supermarket_ok = compute_satisfy_groups(
             hpm_gap,
             include_bike_rack=satisfy_include_bike_rack,
             include_playground=satisfy_include_playground,
@@ -360,14 +439,16 @@ with tab_criteria:
         )
         hpm_gap["Active living OK"] = active_living_ok
         hpm_gap["HPB events OK"] = events_ok
-        hpm_gap["Retail/dining OK"] = retail_dining_ok
+        hpm_gap["HDP outlets OK"] = hdp_ok
 
         gap_cols = [
-            "mall_name", "Active living OK", "HPB events OK", "Retail/dining OK",
+            "mall_name", "Active living OK", "HPB events OK", "HDP outlets OK",
             "has_bike_rack", "has_playground", "hpb_event_count", "HDP Outlet",
         ]
-        if "supermarket_count" in hpm_gap.columns:
-            gap_cols.append("supermarket_count")
+        if "supermarket_outlet_count" in hpm_gap.columns:
+            hpm_gap["Supermarket OK"] = supermarket_ok
+            gap_cols.insert(4, "Supermarket OK")
+            gap_cols.append("supermarket_outlet_count")
 
         st.dataframe(
             hpm_gap[gap_cols].sort_values("mall_name"),
@@ -375,15 +456,15 @@ with tab_criteria:
             hide_index=True,
         )
         st.caption(
-            "A False in any of the three \"OK\" columns is the group that "
-            "mall is failing — see recompute_satisfy() / "
-            "compute_satisfy_groups() for exactly how each is defined."
+            "A False in any of the \"OK\" columns is the group that mall is "
+            "failing — see recompute_satisfy() / compute_satisfy_groups() "
+            "for exactly how each is defined."
         )
 
 with tab_score:
     st.subheader("Proposed HPM Index")
     st.caption(
-        "Cat A: HDP outlets" + (" + supermarkets" if "supermarket_count" in filtered.columns else "") + ". "
+        "Cat A: HDP outlets" + (" + supermarkets" if "supermarket_outlet_count" in filtered.columns else "") + ". "
         "Cat B: bike racks + playgrounds + gyms/sports facilities (GeoJSON + CSV). "
         "Cat C: HPB event/session counts, total participation, and H365 (EDSH store "
         "count + 12-month scans). "
@@ -411,9 +492,9 @@ with tab_score:
     scored = filtered.copy()
 
     # Each category sums the raw columns that feed it (see the caption above);
-    # Cat A optionally folds in supermarket_count when that column is loaded,
+    # Cat A optionally folds in supermarket_outlet_count when that column is loaded,
     # same as the satisfy criteria's retail/dining group.
-    _cat_a_cols = ["HDP Outlet"] + (["supermarket_count"] if "supermarket_count" in scored.columns else [])
+    _cat_a_cols = ["HDP Outlet"] + (["supermarket_outlet_count"] if "supermarket_outlet_count" in scored.columns else [])
     CATEGORY_DEFS = [
         ("a", "Cat A: Healthy Dining Ecosystem", _cat_a_cols),
         ("b", "Cat B: Active Living Infrastructure", ["has_bike_rack", "has_playground", "Gym (GeoJSON)", "Gym/Sports (CSV)"]),
