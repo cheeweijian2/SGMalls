@@ -240,15 +240,15 @@ except FileNotFoundError:
 # has_bike_rack. Does not change mall_locations_summary.csv on disk in any
 # way — only what this dashboard session shows.
 #
-# Tampines 1's postal in full_df.csv (529540) is wrong — hardcoded here to
-# the correct postal, 529536, instead.
+# Tampines 1's postal used to be wrong (529540) and was patched here with a
+# hardcoded override. The fix now lives upstream instead, in openv5.py's own
+# manual-override dict (same place every other multi-postal/bad-geocode mall
+# is corrected) — full_df.csv already reflects the corrected postal (529536),
+# so no special-casing is needed at this layer anymore.
 # ---------------------------------------------------------------------------
 hdp_ok = True
 try:
     mall_postal_pairs = load_mall_postals(FULL_DF_PATH)
-    mall_postal_pairs.loc[
-        mall_postal_pairs["mall_name"] == "Tampines 1", "postal"
-    ] = "529536"
     hdp_postals = load_hdp_postals(HDP_CURRENT_PATH, "postal")
     hdp_counts_by_mall = compute_hdp_outlet_count(mall_postal_pairs, hdp_postals)
     summary["HDP Outlet"] = summary["mall_name"].map(hdp_counts_by_mall).fillna(0).astype(int)
